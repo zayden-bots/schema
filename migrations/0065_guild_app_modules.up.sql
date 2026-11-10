@@ -9,7 +9,9 @@ FROM
     guilds g
 WHERE
     g.id = p.guild_id
-    AND g.bot_joined_at IS NOT NULL;
+    AND g.bot_joined_at IS NOT NULL
+    AND (p.joined_at IS NOT NULL
+        OR p.left_at IS NULL);
 
 CREATE TABLE guild_app_modules (
     guild_id bigint NOT NULL REFERENCES guilds (id) ON DELETE CASCADE,
