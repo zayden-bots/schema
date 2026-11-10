@@ -1,230 +1,113 @@
-# Zayden
+# schema
 
-A Discord bot, an operator dashboard, and the shared application layer between
-them. Serenity for Discord, Topcoat for the dashboard, Postgres via `sqlx`.
+The Postgres schema for Zayden. It holds the `sqlx` migrations in
+`migrations/`, immutable once applied, and embeds them in a small Rust crate so
+every other repo can run them. Nothing in this repo depends on another Zayden
+repo.
 
 ## Layout
 
-| Path                      | What it is                                                      |
-| ------------------------- | --------------------------------------------------------------- |
-| `bot-runtime/`            | shared bot runtime — boot, handler, registry, cron loop         |
-| `bots/zayden/`            | the bot binary — wires modules into a Serenity client           |
-| `bot-modules/*`           | one crate per feature (gambling, levels, music, palworld, …)    |
-| `bot-modules/zayden-core` | command/event routing traits shared by every module             |
-| `zayden-app`              | application layer: config, entitlements, shared state           |
-| `web/`                    | Topcoat server-rendered operator dashboard                      |
-| `schema/`                 | embeds the sqlx migrations in `schema/migrations/`, immutable   |
-| `.sqlx/`                  | offline query cache; committed, regenerated on any query change |
-| `design-docs/`            | specs, plans, and per-module audits                             |
+| Path          | What it is                                                      |
+| ------------- | --------------------------------------------------------------- |
+| `src/lib.rs`  | the `schema` crate: exports `MIGRATOR` and `migrator()`         |
+| `build.rs`    | reruns the build when `migrations/` changes                     |
+| `migrations/` | the sqlx migrations, immutable once applied                     |
+| `.sqlx/`      | offline query cache; committed, regenerated on any query change |
+| `deny.toml`   | `cargo-deny` policy                                             |
+
+## What the crate exports
+
+| Item                | Use                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| `schema::MIGRATOR`  | static `Migrator` for `#[sqlx::test(migrator = "schema::MIGRATOR")]`                                   |
+| `schema::migrator()` | runtime `Migrator` that tolerates versions already applied by a newer binary (`set_ignore_missing`) |
+
+Migrations are embedded at compile time, so tests that use `MIGRATOR` need only
+`DATABASE_URL`.
+
+Other repos take the crate as a git dependency and track the default branch;
+`Cargo.lock` pins the commit:
+
+```toml
+schema = { git = "https://github.com/zayden-bots/schema" }
+```
+
+## Migration rules
+
+- Never edit a migration that has been applied anywhere. Add a new one.
+- Add each change as a `<version>_<name>.up.sql` and `<version>_<name>.down.sql`
+  pair, named like the existing files in `migrations/`.
+- Number a migration when you write it; do not reserve numbers.
+- Migrations must stay backward-compatible: an older binary may still be running
+  against a newer schema.
 
 ## Commands
 
 ```bash
+cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace --all-targets
-cargo fmt --all
+cargo build --workspace --all-targets
+cargo test --workspace
+cargo deny check
 ```
 
 `--all-targets` defaults to _off_ and silently skips tests, benches and
 examples. Always pass it.
 
 Clippy never codegens or links, so it reports green while the build is broken.
-Only a real build exercises linking:
+Only a real build exercises linking.
+
+## Database
+
+Mutating `sqlx` commands run only against a throwaway database:
 
 ```bash
-cargo build --workspace --all-targets
+docker run --rm -d --name zayden-prepare -p 55432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=zayden_prepare postgres:18-alpine
+export DATABASE_URL="postgres://postgres:postgres@localhost:55432/zayden_prepare"
+sqlx migrate run
 ```
 
-`bacon.toml` defines all of the above as watch jobs:
+**Never mutate the live database** (the `DATABASE_URL` in a `.env`) without
+explicit confirmation. Read-only queries are fine.
+
+`.sqlx/` must be committed: CI sets `SQLX_OFFLINE=true` for most jobs, and
+dependents check their queries against the `.sqlx/` inside this checkout.
+Regenerate it against an **empty, freshly-migrated** database, because `LEFT
+JOIN` nullability inference is plan-sensitive:
 
 ```bash
-bacon                    # clippy, the default job
-bacon test               # cargo test
-bacon fmt                # cargo fmt --all --check
-bacon build              # link check
-bacon check-web          # web, check
-bacon check-offline-web  # web, check with SQLX_OFFLINE=true
-bacon clippy-web         # web, clippy
-bacon test-web           # web, tests
-bacon bundle-web         # web, topcoat asset bundle
-bacon nextest             # needs `cargo install cargo-nextest`
+cargo sqlx prepare -- --all-targets
 ```
 
-Keep the flags identical across this README, `bacon.toml` and CI. A local
-command weaker than CI is how drift starts.
+If prepare fails, `git restore .sqlx`.
 
-## Web dashboard (`web/`)
+## CI
 
-`web` is a [Topcoat](https://github.com/tokio-rs/topcoat) 0.11 app: every page
-renders on the server. Routes follow the module tree under `web/src/app/`
-(Topcoat module routing: the module path is the URL), and `web::router()`
-returns the builder that the binary and the `tests/` harness share.
-It reads the `[dashboard]` keys of `bots/zayden/config.toml` and the `DASHBOARD_*`
-environment variables.
+`.github/workflows/ci.yml` runs these jobs in parallel:
 
-It needs the Topcoat CLI, pinned to the same version as the crate:
+| Job                       | Runs                                                                  |
+| ------------------------- | --------------------------------------------------------------------- |
+| `rustfmt`                 | `cargo fmt --all --check` on nightly                                  |
+| `clippy (-D warnings)`    | `cargo clippy --workspace --all-targets --locked -- -D warnings`      |
+| `test`                    | `cargo test --workspace --all-targets --locked` against Postgres 18   |
+| `cargo-deny`              | `cargo-deny check`                                                    |
+| `sqlx prepare --check`    | applies the migrations, then `cargo sqlx prepare --workspace --check` |
 
-```bash
-cargo install topcoat-cli@0.11.0 --locked
-```
-
-Run it from the workspace root against a throwaway database:
-
-```bash
-topcoat asset bundle -p web
-DATABASE_URL=postgres://postgres:postgres@localhost:55432/zayden_prepare \
-DASHBOARD_BIND_ADDR=127.0.0.1:3100 \
-cargo run -p web
-```
-
-- **`topcoat asset bundle -p web`** builds the binary and writes its asset
-  bundle (the compiled stylesheet and every other `asset!`) to `assets/` beside
-  it, e.g. `target/debug/assets/`. The server refuses to start without a bundle,
-  and a bundle only matches the build it came from: re-run the command after any
-  change, before `cargo run`. `--release` bundles the release build. The CLI
-  passes `RUSTUP_TOOLCHAIN`, `RUSTFLAGS` and `CARGO_TARGET_DIR` through to its
-  inner build.
-- **`DASHBOARD_BIND_ADDR`** overrides `[dashboard].bind_addr`. Discord OAuth
-  redirects are registered for `:3000`, so log-in flows only complete when `web`
-  runs there.
-- **`DASHBOARD_COOKIE_KEY`** signs the one-shot result cookie shown after a
-  save: standard base64 of at least 64 random bytes
-  (`openssl rand -base64 64 | tr -d '\n'`). Set the same value on every
-  instance. Unset, `web` logs a warning and signs with a key created at
-  start, so a restart drops an unread result; a malformed value stops startup.
-- **`TAILWIND_CLI`** points `web/build.rs` at a Tailwind CLI binary (v4.3.2).
-  Unset, the build downloads that release itself (about 112 MB) and, on
-  x86-64 Linux, checks it against a pinned SHA-256; on nightly the download
-  repeats whenever the build script's output directory changes. Point it at a
-  local copy to build offline; CI and `docker/Dockerfile.web` always set it to a
-  checksummed download.
-- Styles are utilities in the markup over the app tokens mapped in
-  `web/styles.css`; `web/style/partials/` keeps the rules utilities cannot
-  express (`docs/topcoat/ui.md`, "App styling"). Tailwind only sees
-  class names written literally in `web/src/**/*.rs`.
-- `view!` bodies are formatted by `topcoat fmt`; `topcoat fmt --check` exits
-  non-zero when a file would change. Pass explicit paths
-  (`topcoat fmt web/src web/tests`) so it skips `target/`, then run `cargo fmt`.
-
-### Dev loop
-
-```bash
-export TAILWIND_CLI=/path/to/tailwindcss-4.3.2     # optional, see above
-topcoat asset bundle -p web                        # after every change
-cargo run -p web
-topcoat fmt web/src web/tests && cargo fmt         # format view! bodies, then the rest
-```
-
-`bacon bundle-web` runs the bundle step, `bacon check-web` and `bacon clippy-web`
-watch the crate. `cargo run` alone serves the bundle from the last
-`topcoat asset bundle`, so a stale bundle shows stale CSS or a missing-asset
-error.
-
-### Tests
-
-```bash
-cargo test -p web
-```
-
-Most files in `web/tests/` render pages through the real router. The ones that
-touch Postgres use `#[sqlx::test]`, which needs `DATABASE_URL` pointing at a
-**throwaway** server (see Database below); `cargo test` creates and drops one
-database per test. Nothing in `web` is feature-gated, so the plain workspace
-commands run every test. `tests/legacy_*.rs` hold the source, markup and
-stylesheet scans.
-
-### Docker
-
-`docker/Dockerfile.web` builds the release image on stable: a separate build target
-downloads the Tailwind CLI and checks its SHA-256, the builder installs
-`topcoat-cli`, cooks the dependencies with cargo-chef, removes
-`rust-toolchain.toml` and runs `topcoat asset bundle --release -p web`, and the
-runtime image copies `/app/web` and `/app/assets` side by side (the binary
-looks for `assets/` next to itself). It runs as the `zayden` user, listens on
-`0.0.0.0:3000` (`DASHBOARD_BIND_ADDR`) and reads `/app/config.toml`.
-
-```bash
-docker build -f docker/Dockerfile.web -t dashboard .
-```
-
-CI publishes it as `dashboard`; `docker-compose.yml` runs it as the `web`
-service on host port `3100` with `bots/zayden/config.toml` mounted read-only.
+Everything except `rustfmt` builds on **stable**: `RUSTUP_TOOLCHAIN=stable`
+outranks `rust-toolchain.toml`, and `RUSTFLAGS=""` clears nightly-only flags.
+The workflow runs on pushes to `main`, `v*` tags, pull requests, manually and
+weekly.
 
 ## Conventions
 
 - Lints are declared once in the root `Cargo.toml` under `[workspace.lints]`;
-  every crate opts in with `[lints] workspace = true`.
-- Dependency versions are pinned once in `[workspace.dependencies]`; member
-  crates say `foo.workspace = true` and may _add_ features on top, but never
-  restate a version. Unused workspace entries cost nothing — cargo only
-  resolves a dependency once a member opts in.
+  the crate opts in with `[lints] workspace = true`. The tables are kept
+  identical across the Zayden repos by hand.
+- Dependency versions are pinned once in `[workspace.dependencies]`; the crate
+  says `foo.workspace = true` and may _add_ features, never restate a version.
 - `unwrap`/`expect`/`panic`/`todo`/`dbg!` are **denied** outside tests;
   `clippy.toml` re-permits them under `#[cfg(test)]`.
-- Tests live in `tests/`, not in inline `#[cfg(test)] mod tests` blocks.
-- Commands are registered and routed manually through Serenity traits. `poise`
-  is not used.
 - `rustfmt.toml` uses unstable options, so `rust-toolchain.toml` pins nightly
-  for local work. Never write `cargo +nightly` — the prefix is redundant.
-
-## Toolchain
-
-Nightly for local development, stable for release images. See
-`design-docs/build-and-toolchain.md` for the two mechanisms that keep the split
-working (`Cargo.toml` must stay stable-parseable; `.dockerignore` must keep
-excluding `.cargo/`), how the build profiles are tuned, and why the cranelift
-codegen backend is not used.
-
-## CI
-
-`.github/workflows/ci.yml` runs these jobs in parallel: `rustfmt`, workspace
-`clippy`, workspace tests against a Postgres service, `cargo-deny`, and
-`sqlx prepare --check`. `web` is covered by the workspace `clippy` and `test`
-jobs. Jobs that compile `web` set `TAILWIND_CLI` to a
-checksummed Tailwind download. Everything builds on **stable**
-(`RUSTUP_TOOLCHAIN=stable` outranks `rust-toolchain.toml`, and `RUSTFLAGS=""`
-clears the nightly-only flags in `.cargo/config.toml`), so the CI format gate is
-weaker than `cargo fmt` locally — stable `rustfmt` ignores the unstable options
-rather than erroring.
-
-The `images` job in the same workflow builds the `bot` and `web` release images
-once `rustfmt`, `clippy` and `cargo-deny` pass, and pushes them to GHCR for
-every event except pull requests.
-
-## Database
-
-```bash
-cp .env.example .env
-sqlx database create
-sqlx migrate run --source schema/migrations
-cargo sqlx prepare --workspace -- --all-targets
-```
-
-**Only ever run mutating `sqlx` commands against a throwaway database.** The
-`DATABASE_URL` in `.env` points at the live one; migrations there are the user's
-call. Stand up a disposable server first:
-
-```bash
-docker run --rm -d --name zayden-prepare -p 55432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=zayden_prepare postgres:18-alpine
-```
-
-`.sqlx/` must be committed: CI sets `SQLX_OFFLINE=true` and never connects to a
-database, so that cache is the only thing the query macros have to check
-against. Regenerate it against an **empty, freshly-migrated** database — `LEFT
-JOIN` nullability inference is plan-sensitive, and a cache built against a
-populated DB will fail CI's `prepare --check`.
-
-## Docker
-
-```bash
-docker compose up --build
-```
-
-`docker/Dockerfile.bot` and `docker/Dockerfile.web` are cargo-chef builds:
-dependencies are cooked into a cached layer, then the binary is compiled and
-copied into a `debian:trixie-slim` runtime that runs as a non-root `zayden`
-user. Both build on **stable** — `.dockerignore` keeps `rust-toolchain.toml` and
-`.cargo/` out of the context, so anything in the manifests must parse on stable
-cargo.
-
-`.sqlx/`, `schema/migrations/`, `config.toml` and `radio.toml` are deliberately in the
-build context; almost everything else, including `.claude/`, is not.
+  for local work. Never write `cargo +nightly`; the prefix is redundant.
+- `deny.toml` allows git sources from the orgs under `[sources.allow-org]`; any
+  other git source needs an `allow-git` entry.
