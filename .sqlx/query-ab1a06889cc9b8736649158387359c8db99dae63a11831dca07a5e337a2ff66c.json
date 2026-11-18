@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO deadlock_api_cache (key, kind, body, expires_at)\n         VALUES ('proxy:/v1/matches/1/metadata?disable_steam=true', 'match', '{}', now())",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "ab1a06889cc9b8736649158387359c8db99dae63a11831dca07a5e337a2ff66c"
+}

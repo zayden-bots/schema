@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO deadlock_device_codes\n             (device_code_hash, user_code, device_name, app_version, expires_at)\n         VALUES ($1, 'BCDFGHJK', 'pc', '0.1.0', now() + interval '10 minutes')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c50e1b58a986a1ab3e32e07be878c272b7113f9454c10cf0b19f46971096b2f9"
+}

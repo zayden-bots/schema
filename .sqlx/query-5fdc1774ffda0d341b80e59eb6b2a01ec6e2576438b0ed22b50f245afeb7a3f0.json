@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE deadlock_device_codes\n         SET approved_by = $1, approved_at = now(), denied_at = now()\n         WHERE user_code = 'BCDFGHJK'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5fdc1774ffda0d341b80e59eb6b2a01ec6e2576438b0ed22b50f245afeb7a3f0"
+}

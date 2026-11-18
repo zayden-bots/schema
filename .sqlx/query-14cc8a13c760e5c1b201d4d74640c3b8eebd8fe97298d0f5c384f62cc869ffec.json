@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT match_fetch FROM deadlock_user_settings WHERE discord_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "match_fetch",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "deadlock_user_settings",
+            "name": "match_fetch"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "14cc8a13c760e5c1b201d4d74640c3b8eebd8fe97298d0f5c384f62cc869ffec"
+}

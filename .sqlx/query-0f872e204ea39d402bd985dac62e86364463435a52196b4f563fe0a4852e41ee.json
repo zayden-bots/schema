@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO deadlock_report_waits\n                 (account_id, match_id, discord_id, ended_at, expires_at, finished_at, outcome)\n             VALUES (1, $1, $2, now(), now() + interval '24 hours',\n                     CASE WHEN $3 THEN now() END, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0f872e204ea39d402bd985dac62e86364463435a52196b4f563fe0a4852e41ee"
+}
