@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM account_links WHERE discord_id = 41",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "d72c893c85d45ec14b1487d5fdbe1fc201a31b4acdb9b5db4f459f3b7853c4b4"
+}

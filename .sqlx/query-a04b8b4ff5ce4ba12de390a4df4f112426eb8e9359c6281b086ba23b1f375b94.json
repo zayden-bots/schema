@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO account_links (discord_id, provider, external_id)\n         VALUES (41, 'steam', $1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a04b8b4ff5ce4ba12de390a4df4f112426eb8e9359c6281b086ba23b1f375b94"
+}

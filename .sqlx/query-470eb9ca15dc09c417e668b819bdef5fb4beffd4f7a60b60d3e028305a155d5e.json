@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE account_links SET external_id = $1\n         WHERE discord_id = 41 AND provider = 'steam'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "470eb9ca15dc09c417e668b819bdef5fb4beffd4f7a60b60d3e028305a155d5e"
+}

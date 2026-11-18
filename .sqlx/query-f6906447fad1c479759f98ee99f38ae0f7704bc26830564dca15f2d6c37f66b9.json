@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE account_links SET linked_at = now()\n         WHERE discord_id = 41 AND provider = 'steam'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "f6906447fad1c479759f98ee99f38ae0f7704bc26830564dca15f2d6c37f66b9"
+}

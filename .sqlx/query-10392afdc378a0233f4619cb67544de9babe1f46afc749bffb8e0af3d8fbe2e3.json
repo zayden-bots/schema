@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM account_links WHERE provider = 'steam' AND external_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "10392afdc378a0233f4619cb67544de9babe1f46afc749bffb8e0af3d8fbe2e3"
+}

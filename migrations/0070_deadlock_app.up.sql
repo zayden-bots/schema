@@ -9,7 +9,9 @@ CREATE TABLE deadlock_app_tokens (
     revoked_at timestamptz
 );
 
-CREATE INDEX deadlock_app_tokens_live ON deadlock_app_tokens (discord_id) WHERE revoked_at IS NULL;
+CREATE INDEX deadlock_app_tokens_live ON deadlock_app_tokens (discord_id)
+WHERE
+    revoked_at IS NULL;
 
 CREATE TABLE deadlock_device_codes (
     device_code_hash bytea PRIMARY KEY CHECK (octet_length(device_code_hash) = 32),
@@ -51,10 +53,13 @@ CREATE TABLE deadlock_report_waits (
     CHECK ((finished_at IS NULL) = (outcome IS NULL))
 );
 
-CREATE INDEX deadlock_report_waits_due ON deadlock_report_waits (next_attempt_at) WHERE finished_at IS NULL;
+CREATE INDEX deadlock_report_waits_due ON deadlock_report_waits (next_attempt_at)
+WHERE
+    finished_at IS NULL;
+
 CREATE INDEX deadlock_report_waits_discord_id ON deadlock_report_waits (discord_id, reported_at DESC);
 
 ALTER TABLE deadlock_api_cache
     DROP CONSTRAINT deadlock_api_cache_kind_check,
-    ADD CONSTRAINT deadlock_api_cache_kind_check
-        CHECK (kind IN ('asset', 'analytics', 'build', 'patch', 'match'));
+    ADD CONSTRAINT deadlock_api_cache_kind_check CHECK (kind IN ('asset', 'analytics', 'build', 'patch', 'match'));
+
